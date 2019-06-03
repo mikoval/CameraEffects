@@ -1,1 +1,1 @@
-include ':shadercam', ':shadercam-example'
+include ':shadercam', ':cam-filters'

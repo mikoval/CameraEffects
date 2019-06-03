@@ -35,7 +35,7 @@ import java.nio.ByteOrder;
  * There can be multiple surfaces associated with a single context.
  */
 public class EglSurfaceBase {
-    protected static final String TAG = EglSurfaceBase.class.getSimpleName();
+    protected static final String TAG = "FINDME" +  EglSurfaceBase.class.getSimpleName();
 
     // EglCore object we're associated with.  It may be associated with multiple surfaces.
     protected EglCore mEglCore;
@@ -133,6 +133,7 @@ public class EglSurfaceBase {
      * @return false on failure
      */
     public boolean swapBuffers() {
+        Log.d(TAG, "SWAPPING BUFFERS");
         boolean result = mEglCore.swapBuffers(mEGLSurface);
         if (!result) {
             Log.d(TAG, "WARNING: swapBuffers() failed");

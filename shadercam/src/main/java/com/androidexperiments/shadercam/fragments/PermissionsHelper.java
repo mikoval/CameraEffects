@@ -1,16 +1,21 @@
 package com.androidexperiments.shadercam.fragments;
 
+
+
+
 import android.content.pm.PackageManager;
 import android.os.Build;
-import android.support.annotation.NonNull;
-import android.support.v4.app.Fragment;
-import android.support.v4.app.FragmentActivity;
-import android.support.v4.app.FragmentManager;
-import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentActivity;
+import androidx.fragment.app.FragmentManager;
+
 
 /**
  * Helper headless fragment for handling Android M permissions model, feel free to use this or
@@ -122,9 +127,7 @@ public class PermissionsHelper extends Fragment {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
     }
 
-    public static <ParentFrag extends Fragment & PermissionsListener> PermissionsHelper attach(ParentFrag parent) {
-        return attach(parent.getChildFragmentManager());
-    }
+
 
     public static <ParentActivity extends FragmentActivity & PermissionsListener> PermissionsHelper attach(ParentActivity parent) {
         return attach(parent.getSupportFragmentManager());
@@ -144,7 +147,7 @@ public class PermissionsHelper extends Fragment {
         if (parentFragment instanceof PermissionsListener) {
             return (PermissionsListener) parentFragment;
         } else {
-            FragmentActivity activity = getActivity();
+            FragmentActivity activity = (FragmentActivity)getActivity();
             if (activity instanceof PermissionsListener) {
                 return (PermissionsListener) activity;
             }

@@ -32,7 +32,7 @@ import android.view.Surface;
  * The EGLContext must only be attached to one thread at a time.  This class is not thread-safe.
  */
 public final class EglCore {
-    private static final String TAG = EglCore.class.getSimpleName();
+    private static final String TAG = "FINDME" + EglCore.class.getSimpleName();
 
     /**
      * Constructor flag: surface must be recordable.  This discourages EGL from using a
@@ -142,7 +142,7 @@ public final class EglCore {
      * @param version Must be 2 or 3.
      */
     private EGLConfig getConfig(int flags, int version) {
-        int renderableType = EGL14.EGL_OPENGL_ES2_BIT;
+        int renderableType = EGL14.EGL_OPENGL_ES_BIT;
         if (version >= 3) {
             renderableType |= EGLExt.EGL_OPENGL_ES3_BIT_KHR;
         }

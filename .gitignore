@@ -5,9 +5,7 @@
 .DS_Store
 /build
 /captures
-
-#google specific
-.git-gerrit
+/.idea/*
 
 #bintray specific
 repo.properties

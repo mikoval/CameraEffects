@@ -2,20 +2,30 @@ package com.androidexperiments.shadercam.gl;
 
 import com.androidexperiments.shadercam.fragments.VideoFragment;
 import com.androidexperiments.shadercam.utils.ShaderUtils;
+import com.google.firebase.ml.vision.common.FirebaseVisionImage;
+import com.google.firebase.ml.vision.common.FirebaseVisionPoint;
 import com.uncorkedstudios.android.view.recordablesurfaceview.RecordableSurfaceView;
 
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.SurfaceTexture;
+import android.media.Image;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
+import android.opengl.GLES30;
 import android.opengl.GLUtils;
 import android.opengl.Matrix;
+import android.os.Environment;
 import android.util.Log;
 import android.util.SparseIntArray;
+import android.view.MotionEvent;
 import android.view.Surface;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
@@ -38,6 +48,11 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
 
     int mNeedsRefreshCount = 0;
 
+    private boolean updateShaders;
+    private boolean requestScreenshot = false;
+
+    File imageFile;
+
     /**
      * if you create new files, just override these defaults in your subclass and
      * don't edit the {@link #vertexShaderCode} and {@link #fragmentShaderCode} variables
@@ -53,7 +68,7 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
 
     protected int mSurfaceWidth, mSurfaceHeight;
 
-    protected SurfaceTexture mSurfaceTexture;
+    public SurfaceTexture mSurfaceTexture;
 
     /**
      * if you override these in ctor of subclass, loader will ignore the files listed above
@@ -76,7 +91,7 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
 
     private static short drawOrder[] = {0, 1, 2, 1, 3, 2};
 
-    private FloatBuffer textureBuffer;
+    public FloatBuffer textureBuffer;
 
     private float textureCoords[] = {
             0.0f, 1.0f,
@@ -85,15 +100,11 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
             1.0f, 0.0f,
     };
 
-    protected int mCameraShaderProgram;
+    protected Shader mShaderProgram;
 
-    private FloatBuffer vertexBuffer;
+    public FloatBuffer vertexBuffer;
 
     private ShortBuffer drawListBuffer;
-
-    private int textureCoordinateHandle;
-
-    private int positionHandle;
 
     /**
      * "arbitrary" maximum number of textures. seems that most phones dont like more than 16
@@ -104,7 +115,7 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
      * for storing all texture ids from genTextures, and used when binding
      * after genTextures, id[0] is reserved for camera texture
      */
-    private int[] mTexturesIds = new int[MAX_TEXTURES];
+    public int[] mTexturesIds = new int[MAX_TEXTURES];
 
     /**
      * array of proper constants for use in creation,
@@ -144,8 +155,8 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
      * matrix for transforming our camera texture, available immediately after {@link #}s
      * {@code updateTexImage()} is called in our main {@link #onDrawFrame()} loop.
      */
-    private float[] mCameraTransformMatrix = new float[16];
-    private float[] mOrthoMatrix = new float[16];
+    public float[] mCameraTransformMatrix = new float[16];
+    public float[] mOrthoMatrix = new float[16];
 
     private float mAspectRatio = 1.0f;
 
@@ -161,7 +172,7 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
     private int mViewportWidth, mViewportHeight;
 
     /**
-     * Reference to our users CameraFragment to ease setting viewport size. Thought about decoupling but wasn't
+     * Reference to our users VideoFragment to ease setting viewport size. Thought about decoupling but wasn't
      * worth the listener/callback hastle
      */
     private VideoFragment mVideoFragment;
@@ -188,6 +199,7 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
      * Simple ctor to use default shaders
      */
     public VideoRenderer(Context context) {
+        Log.e(TAG, "CREATED VIDEO RENDERER");
         init(context, DEFAULT_FRAGMENT_SHADER, DEFAULT_VERTEX_SHADER);
     }
 
@@ -206,28 +218,16 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
         this.mContextWeakReference = new WeakReference<>(context);
         this.mFragmentShaderPath = fragPath;
         this.mVertexShaderPath = vertPath;
-        loadFromShadersFromAssets(mFragmentShaderPath, mVertexShaderPath);
-    }
 
-    private void loadFromShadersFromAssets(String pathToFragment, String pathToVertex) {
-        try {
-            fragmentShaderCode = ShaderUtils
-                    .getStringFromFileInAssets(mContextWeakReference.get(), pathToFragment);
-            vertexShaderCode = ShaderUtils
-                    .getStringFromFileInAssets(mContextWeakReference.get(), pathToVertex);
-        } catch (IOException e) {
-            Log.e(TAG, "loadFromShadersFromAssets() failed. Check paths to assets.\n" + e
-                    .getMessage());
-        }
+        mShaderProgram = new BasicShader(context, this);
     }
-
 
     protected void initGLComponents() {
         onPreSetupGLComponents();
         setupVertexBuffer();
         setupTextures();
         setupCameraTexture();
-        setupShaders();
+        mShaderProgram.init();
         onSetupComplete();
     }
 
@@ -241,7 +241,7 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
 
     protected void deinitGLComponents() {
         GLES20.glDeleteTextures(MAX_TEXTURES, mTexturesIds, 0);
-        GLES20.glDeleteProgram(mCameraShaderProgram);
+        GLES20.glDeleteProgram(mShaderProgram.program);
 
     }
 
@@ -311,38 +311,6 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
     }
 
     /**
-     * Handling this manually here but check out another impl at {@link GlUtil#createProgram(String, String)}
-     */
-    protected void setupShaders() {
-        int vertexShaderHandle = GLES20.glCreateShader(GLES20.GL_VERTEX_SHADER);
-        GLES20.glShaderSource(vertexShaderHandle, vertexShaderCode);
-        GLES20.glCompileShader(vertexShaderHandle);
-        checkGlError("Vertex shader compile");
-
-        Log.d(TAG, "vertexShader info log:\n " + GLES20.glGetShaderInfoLog(vertexShaderHandle));
-
-        int fragmentShaderHandle = GLES20.glCreateShader(GLES20.GL_FRAGMENT_SHADER);
-        GLES20.glShaderSource(fragmentShaderHandle, fragmentShaderCode);
-        GLES20.glCompileShader(fragmentShaderHandle);
-        checkGlError("Pixel shader compile");
-
-        Log.d(TAG, "fragmentShader info log:\n " + GLES20.glGetShaderInfoLog(fragmentShaderHandle));
-
-        mCameraShaderProgram = GLES20.glCreateProgram();
-        GLES20.glAttachShader(mCameraShaderProgram, vertexShaderHandle);
-        GLES20.glAttachShader(mCameraShaderProgram, fragmentShaderHandle);
-        GLES20.glLinkProgram(mCameraShaderProgram);
-        checkGlError("Shader program compile");
-
-        int[] status = new int[1];
-        GLES20.glGetProgramiv(mCameraShaderProgram, GLES20.GL_LINK_STATUS, status, 0);
-        if (status[0] != GLES20.GL_TRUE) {
-            String error = GLES20.glGetProgramInfoLog(mCameraShaderProgram);
-            Log.e("SurfaceTest", "Error while linking program:\n" + error);
-        }
-    }
-
-    /**
      * called when all setup is complete on basic GL stuffs
      * override for adding textures and other shaders and make sure to call
      * super so that we can let them know we're done
@@ -366,37 +334,6 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
     }
 
 
-    /**
-     * base amount of attributes needed for rendering camera to screen
-     */
-    protected void setUniformsAndAttribs() {
-        int textureParamHandle = GLES20.glGetUniformLocation(mCameraShaderProgram, "camTexture");
-
-        int textureTranformHandle = GLES20
-                .glGetUniformLocation(mCameraShaderProgram, "camTextureTransform");
-        int positionMatrixHandle = GLES20
-                .glGetUniformLocation(mCameraShaderProgram, "uPMatrix");
-
-        textureCoordinateHandle = GLES20
-                .glGetAttribLocation(mCameraShaderProgram, "camTexCoordinate");
-        positionHandle = GLES20.glGetAttribLocation(mCameraShaderProgram, "position");
-
-        GLES20.glEnableVertexAttribArray(positionHandle);
-        GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 4 * 2,
-                vertexBuffer);
-
-        //camera texture
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, mTexturesIds[0]);
-        GLES20.glUniform1i(textureParamHandle, 0);
-
-        GLES20.glEnableVertexAttribArray(textureCoordinateHandle);
-        GLES20.glVertexAttribPointer(textureCoordinateHandle, 2, GLES20.GL_FLOAT, false, 4 * 2,
-                textureBuffer);
-
-        GLES20.glUniformMatrix4fv(textureTranformHandle, 1, false, mCameraTransformMatrix, 0);
-        GLES20.glUniformMatrix4fv(positionMatrixHandle, 1, false, mOrthoMatrix, 0);
-    }
 
     /**
      * creates a new texture with specified resource id and returns the
@@ -474,7 +411,7 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
         for (int i = 0; i < mTextureArray.size(); i++) {
             Texture tex = mTextureArray.get(i);
             int imageParamHandle = GLES20
-                    .glGetUniformLocation(mCameraShaderProgram, tex.uniformName);
+                    .glGetUniformLocation(mShaderProgram.program, tex.uniformName);
 
             GLES20.glActiveTexture(tex.texId);
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mTexturesIds[tex.texNum]);
@@ -486,11 +423,17 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
 
         GLES20.glDrawElements(GLES20.GL_TRIANGLES, drawOrder.length, GLES20.GL_UNSIGNED_SHORT,
                 drawListBuffer);
+
+        if(GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER) != GLES30.GL_FRAMEBUFFER_COMPLETE) {
+            Log.d("FINDME: ", "INVALID FBO");
+
+        } else {
+        }
     }
 
     protected void onDrawCleanup() {
-        GLES20.glDisableVertexAttribArray(positionHandle);
-        GLES20.glDisableVertexAttribArray(textureCoordinateHandle);
+        //GLES20.glDisableVertexAttribArray(positionHandle);
+        //GLES20.glDisableVertexAttribArray(textureCoordinateHandle);
     }
 
     /**
@@ -562,6 +505,7 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
     @Override
     public void onDrawFrame() {
 
+
         Matrix.orthoM(mOrthoMatrix, 0, -mAspectRatio, mAspectRatio,  -1,  1 ,-1, 1);
 
         if (mNeedsRefreshCount > 0) {
@@ -575,16 +519,26 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
 
         GLES20.glViewport(0, 0, mViewportWidth, mViewportHeight);
 
-        GLES20.glClearColor(0.329412f, 0.329412f, 0.329412f, 0.0f);
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+       //GLES20.glClearColor(1, 0, 0, 1.0f);
+        //GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
-        //set shader
-        GLES20.glUseProgram(mCameraShaderProgram);
 
-        setUniformsAndAttribs();
-        setExtraTextures();
-        drawElements();
-        onDrawCleanup();
+        mShaderProgram.update();
+
+        mShaderProgram.draw();
+        
+
+        if(requestScreenshot) {
+            screenshot();
+            requestScreenshot = false;
+        }
+
+        if(updateShaders) {
+            mShaderProgram.init();
+            updateShaders = false;
+        }
+
+        //onDrawCleanup();
     }
 
     public void setSurfaceTexture(SurfaceTexture surfaceTexture) {
@@ -642,4 +596,106 @@ public class VideoRenderer implements RecordableSurfaceView.RendererCallbacks,
          */
         void onRendererFinished();
     }
+
+    public int getWidth() {
+        return mSurfaceWidth;
+    }
+
+    public int getHeight() {
+        return mSurfaceHeight;
+    }
+
+    public void takeScreenshot(File image) {
+        requestScreenshot = true;
+        imageFile = image;
+    }
+
+    public enum Direction { VERTICAL, HORIZONTAL };
+
+    public static Bitmap flip(Bitmap src, Direction type) {
+        android.graphics.Matrix matrix = new android.graphics.Matrix();
+
+        if(type == Direction.VERTICAL) {
+            matrix.preScale(1.0f, -1.0f);
+        }
+        else if(type == Direction.HORIZONTAL) {
+            matrix.preScale(-1.0f, 1.0f);
+        } else {
+            return src;
+        }
+
+        return Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), matrix, true);
+    }
+
+    public class saveScreenshot implements Runnable {
+        ByteBuffer buffer;
+        public saveScreenshot(ByteBuffer buffer) {
+            this.buffer = buffer;
+        }
+
+        public void run() {
+            int width = mSurfaceWidth;
+            int height = mSurfaceHeight;
+            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            bitmap.copyPixelsFromBuffer(buffer);
+            bitmap = flip(bitmap, Direction.VERTICAL);
+
+            FileOutputStream fos = null;
+            File file = imageFile;
+            try {
+                fos = new FileOutputStream(file);
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    fos.flush();
+                    fos.close();
+                    scanFile(file.getAbsolutePath());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private void screenshot () {
+        int width = mSurfaceWidth;
+        int height = mSurfaceHeight;
+
+        ByteBuffer buffer = ByteBuffer.allocateDirect(width * height * 4);
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        GLES20.glReadPixels(0, 0, width, height, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buffer);
+
+        Runnable r = new saveScreenshot(buffer);
+        new Thread(r).start();
+    }
+
+    public void scanFile(String path) {
+        MediaScannerConnection.scanFile(mContextWeakReference.get(),
+                new String[] { path }, null,
+                new MediaScannerConnection.OnScanCompletedListener() {
+
+                    public void onScanCompleted(String path, Uri uri) {
+                        Log.i("FINDME", "Finished scanning" + path);
+                    }
+                });
+    }
+
+    public void setShader(Shader shader) {
+        if(mShaderProgram != null){
+            mShaderProgram.onDestroy();
+        }
+        mShaderProgram = shader;
+        updateShaders = true;
+    }
+
+    public void setTouch(float x, float y) {
+        mShaderProgram.setTouch(x, y);
+    }
+
+    public void setVideoImage(FirebaseVisionImage image, int width, int height){
+        mShaderProgram.setVideoImage(image, width, height);
+    }
+
 }

@@ -16,20 +16,34 @@
 
 package com.androidexperiments.shadercam.gl;
 
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
+import android.graphics.Paint;
 import android.opengl.GLES20;
 import android.opengl.GLES30;
+import android.opengl.GLUtils;
 import android.opengl.Matrix;
 import android.util.Log;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+
+import androidx.annotation.ColorInt;
 
 /**
  * Some OpenGL utility functions. From Grafika
  */
 public class GlUtil {
-    public static final String TAG = "GlUtil";
+    public static final String TAG = "FINDME" + "GlUtil";
 
     /** Identity matrix for general use.  Don't modify or life will get weird. */
     public static final float[] IDENTITY_MATRIX;
@@ -192,4 +206,77 @@ public class GlUtil {
             }
         }
     }
+
+    public static int loadTexture(Context context, int src) {
+
+        int[] textures = new int[1];
+
+        InputStream is;
+        Bitmap bitmap;
+        is = context.getResources().openRawResource(src);
+
+
+        bitmap = BitmapFactory.decodeStream(is);
+        try {
+            is.close();
+            is = null;
+        } catch (IOException e) {
+        }
+
+        byte[] data = rgbValuesFromBitmap(bitmap);
+
+        GLES30.glGenTextures(1, textures, 0);
+
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textures[0]);
+        GLES30.glTexParameterf(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR);
+        GLES30.glTexParameterf(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR);
+
+
+        GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bitmap, 0);
+        //GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA, bitmap.getWidth(), bitmap.getHeight(), 0,GLES30.GL_RGBA, GLES30.GL_RGBA8, ByteBuffer.wrap(data));
+
+
+
+        bitmap.recycle();
+
+        return textures[0];
+    }
+
+    private static byte[] rgbValuesFromBitmap(Bitmap bitmap)
+    {
+        ColorMatrix colorMatrix = new ColorMatrix();
+        ColorFilter colorFilter = new ColorMatrixColorFilter(
+                colorMatrix);
+        Bitmap argbBitmap = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(),
+                Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(argbBitmap);
+
+        Paint paint = new Paint();
+
+        paint.setColorFilter(colorFilter);
+        canvas.drawBitmap(bitmap, 0, 0, paint);
+
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int componentsPerPixel = 4;
+        int totalPixels = width * height;
+        int totalBytes = totalPixels * componentsPerPixel;
+
+        byte[] rgbValues = new byte[totalBytes];
+        @ColorInt int[] argbPixels = new int[totalPixels];
+        argbBitmap.getPixels(argbPixels, 0, width, 0, 0, width, height);
+        for (int i = 0; i < totalPixels; i++) {
+            @ColorInt int argbPixel = argbPixels[i];
+            int red = Color.red(argbPixel);
+            int green = Color.green(argbPixel);
+            int blue = Color.blue(argbPixel);
+            rgbValues[i * componentsPerPixel + 0] = (byte) red;
+            rgbValues[i * componentsPerPixel + 1] = (byte) green;
+            rgbValues[i * componentsPerPixel + 2] = (byte) 1.0;
+            rgbValues[i * componentsPerPixel + 3] = (byte) 1.0;
+        }
+
+        return rgbValues;
+    }
 }
+

@@ -15,4 +15,5 @@ void main()
     //camera texcoord needs to be manipulated by the transform given back from the system
     v_CamTexCoordinate = (camTextureTransform * camTexCoordinate).xy;
     gl_Position =  uPMatrix * position;
+    gl_Position.y =  gl_Position.y;
 }

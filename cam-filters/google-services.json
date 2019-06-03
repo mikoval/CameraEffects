@@ -1,0 +1,69 @@
+{
+  "project_info": {
+    "project_number": "1043191323290",
+    "firebase_url": "https://ai-test-project-f13b7.firebaseio.com",
+    "project_id": "ai-test-project-f13b7",
+    "storage_bucket": "ai-test-project-f13b7.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1043191323290:android:0bd9946215ca5be3635d23",
+        "android_client_info": {
+          "package_name": "com.ShaderProjects.shadercam"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1043191323290-vqg7tqmc7hhfh2f5fljbjbfnodvu8es5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBth312diqAEZGY5Hf1rLlNt9J7meFpHd4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1043191323290-vqg7tqmc7hhfh2f5fljbjbfnodvu8es5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1043191323290:android:2287c200ec59b8ae635d23",
+        "android_client_info": {
+          "package_name": "michaelkoval.mlkit_test"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1043191323290-vqg7tqmc7hhfh2f5fljbjbfnodvu8es5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBth312diqAEZGY5Hf1rLlNt9J7meFpHd4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1043191323290-vqg7tqmc7hhfh2f5fljbjbfnodvu8es5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

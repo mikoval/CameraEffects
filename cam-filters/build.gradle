@@ -1,0 +1,52 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 28
+    buildToolsVersion '28.0.3'
+
+    defaultConfig {
+        applicationId "com.ShaderProjects.shadercam"
+        minSdkVersion 24
+        targetSdkVersion 28
+        versionCode 4
+        versionName "2.0"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    lintOptions {
+        abortOnError false
+    }
+
+}
+
+repositories {
+    maven {
+        url "https://oss.sonatype.org/content/repositories/snapshots/"
+    }
+}
+project.ext.jomlVersion = "1.9.3-SNAPSHOT"
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+
+    implementation project(':shadercam')
+    implementation 'com.uncorkedstudios.android:recordable-surfaceview:1.5.0'
+    annotationProcessor 'com.jakewharton:butterknife:7.0.1'
+    implementation 'com.jakewharton:butterknife:7.0.1' //dependency injection
+    implementation "androidx.recyclerview:recyclerview:1.1.0"
+
+    implementation 'com.google.firebase:firebase-database:19.2.0'
+    implementation 'com.google.firebase:firebase-ml-vision:24.0.1'
+    implementation 'com.google.firebase:firebase-ml-vision-face-model:19.0.0'
+
+
+    implementation 'com.squareup.picasso:picasso:2.5.2'
+    implementation "org.joml:joml-android:${jomlVersion}"
+
+}
+
+apply plugin: 'com.google.gms.google-services'

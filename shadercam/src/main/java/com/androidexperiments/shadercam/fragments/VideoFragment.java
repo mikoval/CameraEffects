@@ -1,13 +1,18 @@
 package com.androidexperiments.shadercam.fragments;
 
 import com.androidexperiments.shadercam.gl.VideoRenderer;
+import com.google.firebase.ml.vision.common.FirebaseVisionImage;
+import com.google.firebase.ml.vision.common.FirebaseVisionImageMetadata;
 import com.uncorkedstudios.android.view.recordablesurfaceview.RecordableSurfaceView;
 
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.app.DialogFragment;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.graphics.Bitmap;
+import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -18,16 +23,21 @@ import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.Image;
+import android.media.ImageReader;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
+import android.opengl.GLES20;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.support.annotation.NonNull;
-import android.support.v4.app.DialogFragment;
-import android.support.v4.app.Fragment;
+
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
 import android.widget.Toast;
+
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,12 +47,15 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import androidx.annotation.NonNull;
+import androidx.fragment.app.Fragment;
+
 /**
  * Fragment for operating the camera, it doesnt have any UI elements, just controllers
  */
 public class VideoFragment extends Fragment implements VideoRenderer.OnRendererReadyListener {
 
-    private static final String TAG = "VideoFragment";
+    private static final String TAG = "FINDME: VideoFragment";
 
     private static VideoFragment __instance;
 
@@ -52,6 +65,8 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
     private RecordableSurfaceView mRecordableSurfaceView;
 
     private VideoRenderer mVideoRenderer;
+
+    private ImageReader reader;
 
     /**
      * A refernce to the opened {@link CameraDevice}.
@@ -84,11 +99,13 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
      * An additional thread for running tasks that shouldn't block the UI.
      */
     private HandlerThread mBackgroundThread;
+    private HandlerThread mBackgroundThread2;
 
     /**
      * A {@link Handler} for running tasks in the background.
      */
     private Handler mBackgroundHandler;
+    private Handler mBackgroundHandler2;
 
     private SurfaceTexture mSurfaceTexture;
 
@@ -120,7 +137,7 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
      * Get instance of this fragment that sets retain instance true so it is not affected
      * by device orientation changes and other updates
      *
-     * @return instance of CameraFragment
+     * @return instance of VideoFragment
      */
     public static VideoFragment getInstance() {
         if (__instance == null) {
@@ -132,12 +149,14 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
 
     @Override
     public void onResume() {
+        Log.d(TAG, "ON RESUME");
         super.onResume();
         startBackgroundThread();
     }
 
     @Override
     public void onPause() {
+        Log.d(TAG, "ON PAUSE");
         super.onPause();
         closeCamera();
         stopBackgroundThread();
@@ -164,6 +183,10 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
         mBackgroundThread = new HandlerThread("CameraBackground");
         mBackgroundThread.start();
         mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
+
+//        mBackgroundThread2 = new HandlerThread("CameraBackground");
+//        mBackgroundThread2.start();
+        mBackgroundHandler2 = new Handler(mBackgroundThread.getLooper());
     }
 
     /**
@@ -232,7 +255,7 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
         } catch (NullPointerException e) {
             e.printStackTrace();
             // Currently an NPE is thrown when the Camera2API is used but not supported on the device this code runs.
-            new CameraFragment.ErrorDialog().show(getFragmentManager(), "dialog");
+            //new VideoFragment.ErrorDialog().show(getFragmentManager(), "dialog");
         } catch (InterruptedException e) {
             throw new RuntimeException("Interrupted while trying to lock camera opening.");
         }
@@ -263,6 +286,7 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
         public void onClosed(@NonNull CameraCaptureSession session) {
             super.onClosed(session);
             Log.e(TAG, "onClosed: " + session);
+
 
         }
     };
@@ -377,6 +401,7 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
             Size  preViewSize = getOptimalPreviewSize(
                     streamConfigurationMap.getOutputSizes(SurfaceTexture.class),
                     mRecordableSurfaceView.getWidth(), mRecordableSurfaceView.getHeight());
+            Log.d("FINDME" , "PREVIEW WINDOW SIZE: " + preViewSize.getWidth() + ", " + preViewSize.getHeight());
             mSurfaceTexture.setDefaultBufferSize(preViewSize.getWidth(), preViewSize.getHeight());
 
             float screenAspect = mRecordableSurfaceView.getWidth() * 1.0f/ mRecordableSurfaceView.getHeight();
@@ -385,15 +410,77 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
             float screenToTextureAspectRatio = screenAspect / previewAspect;
             mVideoRenderer.setAspectRatio(screenToTextureAspectRatio);
 
+            int height = preViewSize.getHeight()/8;
+            int width = preViewSize.getWidth()/8;
+            reader = ImageReader.newInstance(width, height,
+                    ImageFormat.YUV_420_888, 1);
+            reader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                @Override
+                public void onImageAvailable(ImageReader reader) {
+                    //Log.d("FINDME", " ON AVAILABLE STARTED");
+
+
+                    Image image = null;
+
+                    try {
+                        image = reader.acquireLatestImage();
+                        //Do whatever you want with your Image
+
+                        if (image != null) {
+                            FirebaseVisionImage img = FirebaseVisionImage.fromMediaImage(image, FirebaseVisionImageMetadata.ROTATION_270);
+                           // Log.d("FINDME", "FACE SIZE: " + image.getWidth() + ", " +  image.getHeight() + ": " + mRecordableSurfaceView.getWidth() +  ", " + mRecordableSurfaceView.getHeight());
+
+
+                            mVideoRenderer.setVideoImage(img, img.getBitmap().getWidth(), img.getBitmap().getHeight());
+                            image.close();
+
+                        }
+                    } catch (IllegalStateException iae) {
+                        if (image != null) {
+                            image.close();
+                        }
+                    }
+
+
+                   // Log.d("FINDME", " ON AVAILABLE DONE");
+                }
+            }, mBackgroundHandler2);
+
             Surface previewSurface = new Surface(mSurfaceTexture);
             mSurfaces.add(previewSurface);
+            mSurfaces.add(reader.getSurface());
+            mPreviewBuilder.set(CaptureRequest.JPEG_ORIENTATION, 270);
             mPreviewBuilder.addTarget(previewSurface);
+            mPreviewBuilder.addTarget(reader.getSurface());
+
+            int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
+            mPreviewBuilder.set(CaptureRequest.JPEG_ORIENTATION, getOrientation(characteristics, rotation));
+
 
             mCameraDevice.createCaptureSession(mSurfaces, mCaptureSessionStateCallback,
                     mBackgroundHandler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+    }
+
+    private int getOrientation(CameraCharacteristics c, int deviceOrientation) {
+        if (deviceOrientation == android.view.OrientationEventListener.ORIENTATION_UNKNOWN)
+            return 0;
+        int sensorOrientation = c.get(CameraCharacteristics.SENSOR_ORIENTATION);
+
+        // Round device orientation to a multiple of 90
+        deviceOrientation = (deviceOrientation + 45) / 90 * 90;
+
+        // Reverse device orientation for front-facing cameras
+        boolean facingFront = c.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT;
+        if (facingFront) deviceOrientation = -deviceOrientation;
+
+        // Calculate desired JPEG orientation relative to camera orientation to make
+        // the image upright relative to the device orientation
+        int jpegOrientation = (sensorOrientation + deviceOrientation + 360) % 360;
+
+        return jpegOrientation;
     }
 
     /**
@@ -405,7 +492,7 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
         }
         try {
             mPreviewBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
-            mPreviewSession.setRepeatingRequest(mPreviewBuilder.build(), mCaptureCallback,
+            mPreviewSession.setRepeatingRequest(mPreviewBuilder.build(), null,
                     mBackgroundHandler);
 
             mSurfaceTexture.setOnFrameAvailableListener(mVideoRenderer);
@@ -564,4 +651,6 @@ public class VideoFragment extends Fragment implements VideoRenderer.OnRendererR
         }
 
     }
+
+
 }
